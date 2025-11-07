@@ -60,9 +60,19 @@ class SonarClient:
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
+                        message = result["choices"][0]["message"]
+                        
+                        # 提取citations（如果存在）
+                        citations = []
+                        if "citations" in result:
+                            citations = result["citations"]
+                        elif "citations" in message:
+                            citations = message["citations"]
+                        
                         return {
                             "query": query,
-                            "content": result["choices"][0]["message"]["content"],
+                            "content": message["content"],
+                            "citations": citations,
                             "status": "success"
                         }
                     else:

@@ -110,11 +110,20 @@ class ValuationReportSystem:
                 "queries_executed": collection_result["total_queries"]
             }
             
-            # 重新生成专业格式报告（带正确的元数据）
+            # 收集所有citations
+            all_citations = []
+            for result in collection_result.get("results", []):
+                if result.get("status") == "success" and result.get("citations"):
+                    for citation in result["citations"]:
+                        if citation not in all_citations:  # 去重
+                            all_citations.append(citation)
+            
+            # 重新生成专业格式报告（带正确的元数据和citations）
             analysis_result["report"] = self.professional_formatter.format_professional_report(
                 company,
                 analysis_result["report_json"],
-                metadata
+                metadata,
+                citations=all_citations
             )
         
         print("\n" + "="*80)

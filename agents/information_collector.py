@@ -68,6 +68,7 @@ class InformationCollectorAgent:
                     "purpose": query_info["purpose"],
                     "priority": query_info["priority"],
                     "content": result["content"],
+                    "citations": result.get("citations", []),
                     "status": "success"
                 })
                 success_count += 1
@@ -126,6 +127,15 @@ class InformationCollectorAgent:
                     formatted_text += f"### {result['purpose']}\n"
                     formatted_text += f"查询: {result['query']}\n\n"
                     formatted_text += f"{result['content']}\n\n"
+                    
+                    # 添加引用来源
+                    citations = result.get('citations', [])
+                    if citations:
+                        formatted_text += "**引用来源:**\n"
+                        for idx, citation in enumerate(citations, 1):
+                            formatted_text += f"{idx}. {citation}\n"
+                        formatted_text += "\n"
+                    
                     formatted_text += "---\n\n"
         
         return formatted_text

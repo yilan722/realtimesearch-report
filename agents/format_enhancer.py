@@ -14,7 +14,7 @@ class FormatEnhancer:
     
     def enhance_report_format(self, report_json: Dict) -> Dict:
         """
-        增强报告格式
+        增强报告格式（支持4章节或5章节）
         
         Args:
             report_json: 原始报告JSON
@@ -24,11 +24,16 @@ class FormatEnhancer:
         """
         enhanced = {}
         
+        # 处理标准的4个章节
         for key in ["fundamentalAnalysis", "businessSegments", "growthCatalysts", "valuationAnalysis"]:
             if key in report_json:
                 enhanced[key] = self._enhance_section(report_json[key], key)
             else:
                 enhanced[key] = ""
+        
+        # 处理可选的第5个章节（AI洞察）- 向后兼容
+        if "aiInsights" in report_json:
+            enhanced["aiInsights"] = self._enhance_section(report_json["aiInsights"], "aiInsights")
         
         return enhanced
     
