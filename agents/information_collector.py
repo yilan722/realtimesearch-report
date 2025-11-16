@@ -51,10 +51,23 @@ class InformationCollectorAgent:
         print(f"🔍 开始并行搜索 {len(query_strings)} 个查询...")
         
         # 并行执行所有查询（成本优化：节省时间）
-        results = self.sonar_client.batch_search(
-            query_strings,
-            max_concurrent=MAX_CONCURRENT_SEARCHES
-        )
+        try:
+            results = self.sonar_client.batch_search(
+                query_strings,
+                max_concurrent=MAX_CONCURRENT_SEARCHES
+            )
+        except Exception as e:
+            print(f"❌ 批量搜索异常: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "status": "error",
+                "company": query_plan.get("company", "Unknown"),
+                "error": f"批量搜索失败: {str(e)}",
+                "results": [],
+                "success_count": 0,
+                "total_queries": len(query_strings)
+            }
         
         # 组织结果
         organized_results = []
@@ -62,26 +75,41 @@ class InformationCollectorAgent:
         
         for i, result in enumerate(results):
             query_info = queries[i]
-            if result["status"] == "success":
+            if result.get("status") == "success":
                 organized_results.append({
-                    "query": result["query"],
+                    "query": result.get("query", query_info["query"]),
                     "purpose": query_info["purpose"],
                     "priority": query_info["priority"],
-                    "content": result["content"],
+                    "content": result.get("content", ""),
                     "citations": result.get("citations", []),
                     "status": "success"
                 })
                 success_count += 1
             else:
+                error_msg = result.get("error", "未知错误")
+                print(f"  ❌ 查询失败: {query_info['query'][:50]}... - {error_msg}")
                 organized_results.append({
-                    "query": result["query"],
+                    "query": result.get("query", query_info["query"]),
                     "purpose": query_info["purpose"],
                     "priority": query_info["priority"],
-                    "error": result.get("error", "未知错误"),
+                    "error": error_msg,
                     "status": "error"
                 })
         
         print(f"✅ 搜索完成: {success_count}/{len(query_strings)} 个查询成功")
+        
+        # 如果所有查询都失败，显示警告
+        if success_count == 0:
+            print(f"\n⚠️  警告: 所有查询都失败了！")
+            print(f"   可能的原因:")
+            print(f"   1. API Key无效或过期")
+            print(f"   2. 网络连接问题")
+            print(f"   3. API限制或配额用完")
+            print(f"   4. 查询格式问题")
+            print(f"\n   请检查:")
+            print(f"   - config.py 中的 PERPLEXITY_API_KEY")
+            print(f"   - 网络连接")
+            print(f"   - Perplexity API 账户状态")
         
         return {
             "status": "success",

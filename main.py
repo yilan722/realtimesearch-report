@@ -36,7 +36,9 @@ class ValuationReportSystem:
         company: str,
         analysis_type: str = "valuation",
         report_type: str = "comprehensive",
-        save_to_file: bool = True
+        save_to_file: bool = True,
+        generate_pdf: bool = True,  # 默认生成PDF
+        keep_markdown: bool = True  # 是否保留Markdown文件
     ) -> dict:
         """
         生成完整的估值报告
@@ -46,6 +48,8 @@ class ValuationReportSystem:
             analysis_type: 分析类型
             report_type: 报告类型（comprehensive=综合, quick=快速）
             save_to_file: 是否保存到文件
+            generate_pdf: 是否生成PDF版本（默认True）
+            keep_markdown: 是否保留Markdown文件（默认True）
             
         Returns:
             包含报告内容的字典
@@ -150,7 +154,31 @@ class ValuationReportSystem:
         if save_to_file:
             filename = self._save_report(company, result)
             result["metadata"]["saved_file"] = filename
-            print(f"💾 报告已保存到: {filename}")
+            
+            # 生成PDF（默认启用）
+            if generate_pdf:
+                pdf_filename = self._generate_pdf_report(filename, company, analysis_result.get("report_json"))
+                if pdf_filename:
+                    result["metadata"]["pdf_file"] = pdf_filename
+                    print(f"📄 PDF报告已生成: {pdf_filename}")
+                    
+                    # 如果不保留Markdown，删除它
+                    if not keep_markdown:
+                        import os
+                        try:
+                            os.remove(filename)
+                            # 同时删除enhanced版本（如果存在）
+                            enhanced_file = filename.replace('.md', '_enhanced.md')
+                            if os.path.exists(enhanced_file):
+                                os.remove(enhanced_file)
+                            print(f"🗑️  已删除临时Markdown文件")
+                            result["metadata"].pop("saved_file", None)
+                        except Exception as e:
+                            print(f"⚠️  删除Markdown文件失败: {e}")
+                else:
+                    print(f"⚠️  PDF生成失败，保留Markdown: {filename}")
+            else:
+                print(f"💾 Markdown报告已保存: {filename}")
         
         return result
     
@@ -255,6 +283,115 @@ class ValuationReportSystem:
             pass
         
         return content
+    
+    def _generate_pdf_report(self, markdown_path: str, company: str, report_json: dict = None) -> str:
+        """
+        生成PDF报告
+        
+        Args:
+            markdown_path: Markdown报告路径
+            company: 公司名称
+            report_json: 报告JSON数据（可选）
+            
+        Returns:
+            PDF文件路径
+        """
+        try:
+            from pdf_generator import ProfessionalPDFGenerator
+            import os
+            
+            print(f"\n📄 正在生成PDF报告...")
+            
+            # 准备PDF输出路径
+            pdf_path = markdown_path.replace('.md', '.pdf')
+            
+            # 如果有JSON数据，直接使用
+            if report_json:
+                # 读取markdown文件获取元数据和Executive Summary
+                with open(markdown_path, 'r', encoding='utf-8') as f:
+                    md_content = f.read()
+                
+                # 提取元数据
+                import re
+                metadata = {}
+                timestamp_match = re.search(r'\*\*生成时间\*\*: (.+)', md_content)
+                if timestamp_match:
+                    metadata['timestamp'] = timestamp_match.group(1)
+                
+                queries_match = re.search(r'\*\*查询数\*\*: (\d+)/(\d+)', md_content)
+                if queries_match:
+                    metadata['queries_successful'] = int(queries_match.group(1))
+                    metadata['queries_total'] = int(queries_match.group(2))
+                
+                # 提取Executive Summary（从Markdown中）
+                exec_summary = ""
+                exec_summary_match = re.search(
+                    r'## Executive Summary\s*\n(.*?)(?=\n##|\Z)',
+                    md_content,
+                    re.DOTALL
+                )
+                if exec_summary_match:
+                    exec_summary = exec_summary_match.group(1).strip()
+                    print(f"   ✅ Executive Summary已提取 ({len(exec_summary)} 字符)")
+                
+                # 提取References（从Markdown中）
+                references = ""
+                references_match = re.search(
+                    r'## 📚 References and Citations\s*\n(.*?)(?=\n##|\Z)',
+                    md_content,
+                    re.DOTALL
+                )
+                if references_match:
+                    references = references_match.group(1).strip()
+                    print(f"   ✅ References已提取 ({len(references)} 字符)")
+                
+                # 文本清理 - 使用WordFixer直接修复所有问题
+                from agents.word_fixer import WordFixer
+                print("   🧹 修复单词拆分问题...")
+                
+                # 使用WordFixer直接修复所有章节的文本
+                cleaned_fundamental = WordFixer.fix_all_issues(report_json.get('fundamentalAnalysis', ''))
+                cleaned_business = WordFixer.fix_all_issues(report_json.get('businessSegments', ''))
+                cleaned_growth = WordFixer.fix_all_issues(report_json.get('growthCatalysts', ''))
+                cleaned_valuation = WordFixer.fix_all_issues(report_json.get('valuationAnalysis', ''))
+                
+                # 准备报告数据（不包含Executive Summary）
+                report_data = {
+                    'metadata': metadata,
+                    # 'executiveSummary': exec_summary,  # 已删除（用户要求）
+                    'fundamentalAnalysis': cleaned_fundamental,
+                    'businessSegments': cleaned_business,
+                    'growthCatalysts': cleaned_growth,
+                    'valuationAnalysis': cleaned_valuation
+                }
+                
+                # 如果有AI洞察，也包含进去（使用WordFixer修复）
+                if 'aiInsights' in report_json:
+                    report_data['aiInsights'] = WordFixer.fix_all_issues(report_json['aiInsights'])
+                    print(f"   ✅ AI Insights已包含（已修复）")
+                
+                # 如果有References，也包含进去（使用WordFixer修复）
+                if references:
+                    report_data['references'] = WordFixer.fix_all_issues(references)
+                    print(f"   ✅ References已包含（已修复）")
+                
+                # 生成PDF
+                generator = ProfessionalPDFGenerator()
+                generator.generate_report_pdf(company, report_data, pdf_path)
+                
+            else:
+                # 从Markdown转换（备用方案）
+                from pdf_generator import convert_markdown_to_pdf
+                pdf_path = convert_markdown_to_pdf(markdown_path)
+            
+            return pdf_path
+            
+        except Exception as e:
+            print(f"\n⚠️  PDF生成失败: {e}")
+            print(f"   Markdown报告仍然可用: {markdown_path}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     def quick_analysis(self, company: str) -> str:
         """快速分析（便捷方法）"""

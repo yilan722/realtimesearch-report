@@ -89,8 +89,10 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 快速统计")
     if os.path.exists("reports"):
-        report_count = len(glob.glob("reports/*.md"))
-        st.metric("生成报告数", report_count)
+        md_count = len(glob.glob("reports/*.md"))
+        pdf_count = len(glob.glob("reports/*.pdf"))
+        st.metric("Markdown报告", md_count)
+        st.metric("PDF报告", pdf_count)
     
     st.markdown("---")
     st.caption("Powered by Sonar + Qwen3-Max")
@@ -341,14 +343,80 @@ elif page == "📈 单公司分析":
                             # 使用Markdown格式显示
                             st.markdown(result["report"], unsafe_allow_html=True)
                         
-                        # 下载按钮
+                        # 下载按钮 - 优先下载PDF
                         if save_file:
-                            st.download_button(
-                                label="📥 下载报告",
-                                data=result["report"],
-                                file_name=f"{company}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                                mime="text/markdown"
-                            )
+                            # 检查是否有PDF文件
+                            pdf_file = result.get("metadata", {}).get("pdf_file")
+                            
+                            if pdf_file and os.path.exists(pdf_file):
+                                # 下载PDF
+                                with open(pdf_file, 'rb') as f:
+                                    pdf_data = f.read()
+                                st.download_button(
+                                    label="📥 下载报告 (PDF)",
+                                    data=pdf_data,
+                                    file_name=os.path.basename(pdf_file),
+                                    mime="application/pdf"
+                                )
+                            else:
+                                # 如果没有PDF，尝试生成PDF
+                                try:
+                                    from pdf_generator import ProfessionalPDFGenerator
+                                    import tempfile
+                                    
+                                    # 准备报告数据
+                                    report_json = result.get("report_json", {})
+                                    if not report_json:
+                                        # 如果没有JSON，从Markdown解析
+                                        st.warning("⚠️ 无法生成PDF，将下载Markdown格式")
+                                        st.download_button(
+                                            label="📥 下载报告 (Markdown)",
+                                            data=result["report"],
+                                            file_name=f"{company}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                                            mime="text/markdown"
+                                        )
+                                    else:
+                                        # 生成PDF
+                                        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                                            pdf_path = tmp_file.name
+                                        
+                                        generator = ProfessionalPDFGenerator()
+                                        generator.generate_report_pdf(
+                                            company,
+                                            {
+                                                'metadata': result.get("metadata", {}),
+                                                'fundamentalAnalysis': report_json.get('fundamentalAnalysis', ''),
+                                                'businessSegments': report_json.get('businessSegments', ''),
+                                                'growthCatalysts': report_json.get('growthCatalysts', ''),
+                                                'valuationAnalysis': report_json.get('valuationAnalysis', ''),
+                                                'aiInsights': report_json.get('aiInsights', ''),
+                                            },
+                                            pdf_path
+                                        )
+                                        
+                                        # 下载PDF
+                                        with open(pdf_path, 'rb') as f:
+                                            pdf_data = f.read()
+                                        st.download_button(
+                                            label="📥 下载报告 (PDF)",
+                                            data=pdf_data,
+                                            file_name=f"{company}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                            mime="application/pdf"
+                                        )
+                                        # 清理临时文件
+                                        try:
+                                            os.unlink(pdf_path)
+                                        except:
+                                            pass
+                                except Exception as e:
+                                    # 如果PDF生成失败，回退到Markdown
+                                    st.warning(f"⚠️ PDF生成失败: {str(e)}，将下载Markdown格式")
+                                    st.download_button(
+                                        label="📥 下载报告 (Markdown)",
+                                        data=result["report"],
+                                        file_name=f"{company}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                                        mime="text/markdown"
+                                    )
                     else:
                         st.error(f"❌ 分析失败: {result.get('error', '未知错误')}")
                         
@@ -785,8 +853,10 @@ elif page == "📚 历史报告":
     st.markdown("### 💾 已保存的报告")
     
     if os.path.exists("reports"):
-        # 获取所有报告文件
-        all_reports = sorted(glob.glob("reports/*.md"), key=os.path.getmtime, reverse=True)
+        # 获取所有报告文件（.md 和 .pdf）
+        all_md = glob.glob("reports/*.md")
+        all_pdf = glob.glob("reports/*.pdf")
+        all_reports = sorted(all_md + all_pdf, key=os.path.getmtime, reverse=True)
         
         if all_reports:
             # 统计不同类型的报告
@@ -798,6 +868,8 @@ elif page == "📚 历史报告":
                     return '🔄 比较分析'
                 elif 'enhanced' in basename:
                     return '📊 增强报告'
+                elif filename.endswith('.pdf'):
+                    return '📄 PDF报告'
                 else:
                     return '📈 估值报告'
             
@@ -890,37 +962,55 @@ elif page == "📚 历史报告":
                         # 操作按钮
                         col1, col2, col3 = st.columns(3)
                         
+                        # 判断文件类型
+                        is_pdf = report_path.endswith('.pdf')
+                        
                         with col1:
-                            if st.button("📖 查看报告", key=f"view_{i}", use_container_width=True):
-                                with open(report_path, 'r', encoding='utf-8') as f:
-                                    content = f.read()
-                                
-                                # 在新的区域显示
-                                st.markdown("---")
-                                st.markdown("### 📄 报告内容")
-                                
-                                # 添加专业样式
-                                st.markdown("""
-                                <style>
-                                .report-content {
-                                    background: white;
-                                    padding: 2rem;
-                                    border-radius: 8px;
-                                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                                }
-                                </style>
-                                """, unsafe_allow_html=True)
-                                
-                                st.markdown(content, unsafe_allow_html=True)
+                            if is_pdf:
+                                # PDF文件：提供下载按钮
+                                with open(report_path, 'rb') as f:
+                                    pdf_data = f.read()
+                                st.download_button(
+                                    label="📄 下载PDF",
+                                    data=pdf_data,
+                                    file_name=report_name,
+                                    mime="application/pdf",
+                                    key=f"download_pdf_{i}",
+                                    use_container_width=True
+                                )
+                            else:
+                                # Markdown文件：查看报告
+                                if st.button("📖 查看报告", key=f"view_{i}", use_container_width=True):
+                                    with open(report_path, 'r', encoding='utf-8') as f:
+                                        content = f.read()
+                                    
+                                    # 在新的区域显示
+                                    st.markdown("---")
+                                    st.markdown("### 📄 报告内容")
+                                    
+                                    # 添加专业样式
+                                    st.markdown("""
+                                    <style>
+                                    .report-content {
+                                        background: white;
+                                        padding: 2rem;
+                                        border-radius: 8px;
+                                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                    }
+                                    </style>
+                                    """, unsafe_allow_html=True)
+                                    
+                                    st.markdown(content, unsafe_allow_html=True)
                         
                         with col2:
-                            with open(report_path, 'r', encoding='utf-8') as f:
-                                content = f.read()
-                            st.download_button(
-                                label="📥 下载",
-                                data=content,
-                                file_name=report_name,
-                                mime="text/markdown",
+                            if not is_pdf:  # 只有Markdown文件才有下载按钮
+                                with open(report_path, 'r', encoding='utf-8') as f:
+                                    content = f.read()
+                                st.download_button(
+                                    label="📥 下载MD",
+                                    data=content,
+                                    file_name=report_name,
+                                    mime="text/markdown",
                                 key=f"download_{i}",
                                 use_container_width=True
                             )

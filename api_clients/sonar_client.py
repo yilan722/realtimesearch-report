@@ -60,6 +60,15 @@ class SonarClient:
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
+                        
+                        # 检查响应格式
+                        if "choices" not in result or len(result["choices"]) == 0:
+                            return {
+                                "query": query,
+                                "error": "API响应格式错误：缺少choices",
+                                "status": "error"
+                            }
+                        
                         message = result["choices"][0]["message"]
                         
                         # 提取citations（如果存在）
@@ -69,6 +78,14 @@ class SonarClient:
                         elif "citations" in message:
                             citations = message["citations"]
                         
+                        # 检查content是否存在
+                        if "content" not in message:
+                            return {
+                                "query": query,
+                                "error": "API响应格式错误：缺少content",
+                                "status": "error"
+                            }
+                        
                         return {
                             "query": query,
                             "content": message["content"],
@@ -77,15 +94,29 @@ class SonarClient:
                         }
                     else:
                         error_text = await response.text()
+                        error_msg = f"API错误 {response.status}: {error_text[:200]}"
+                        print(f"  ⚠️  查询失败: {query[:50]}... - {error_msg}")
                         return {
                             "query": query,
-                            "error": f"API错误 {response.status}: {error_text}",
+                            "error": error_msg,
                             "status": "error"
                         }
-        except Exception as e:
+        except asyncio.TimeoutError:
+            error_msg = f"查询超时: {query[:50]}..."
+            print(f"  ⚠️  {error_msg}")
             return {
                 "query": query,
-                "error": str(e),
+                "error": error_msg,
+                "status": "error"
+            }
+        except Exception as e:
+            error_msg = f"异常: {str(e)}"
+            print(f"  ⚠️  查询异常: {query[:50]}... - {error_msg}")
+            import traceback
+            print(f"  详细错误: {traceback.format_exc()[:200]}")
+            return {
+                "query": query,
+                "error": error_msg,
                 "status": "error"
             }
     

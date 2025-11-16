@@ -35,6 +35,13 @@ class QueryPlannerAgent:
 2. 查询应涵盖估值分析的关键维度
 3. 优先获取最新的实时信息
 4. 查询应该具体、可搜索
+5. **必须包含股票当前价格和市值的查询**（高优先级）
+6. **所有估值指标查询必须明确要求"截止今日"或"最新"数据**
+
+重要规则：
+- 必须有一个查询专门获取股票当前价格和市值（使用"current stock price", "market cap", "today", "latest"等关键词）
+- 所有估值指标（PE、PS、PB等）查询必须包含时间限定词（"latest", "current", "as of today", "截止今日"等）
+- 使用英文进行查询
 
 输出格式（必须是有效的JSON）：
 {{
@@ -49,15 +56,27 @@ class QueryPlannerAgent:
 研究对象：{company_or_topic}
 分析类型：{analysis_type}
 
-对于估值分析，请涵盖以下维度：
-1. 公司基本面（最新财务数据、营收、利润）
-2. 行业地位和竞争优势
-3. 最新新闻和重大事件
-4. 市场估值指标（PE、PS、PB等）
-5. 未来增长预期和战略方向
-6. 风险因素和挑战
-7. 分析师观点和评级
-8. 行业趋势和宏观环境
+对于估值分析，请涵盖以下维度（必须包含）：
+1. **股票当前价格和市值**（高优先级）：当前股价、市值、交易量等实时数据
+2. **公司基本介绍**（高优先级）：公司成立背景、发展历史、核心团队、管理层背景
+3. 公司基本面（最新财务数据、营收、利润）
+4. **竞争和合作关系**（高优先级）：主要竞争对手、战略合作伙伴、合作关系
+5. **供应链关系**（中优先级）：主要供应商、客户关系、供应链稳定性
+6. 行业地位和竞争优势
+7. 最新新闻和重大事件
+8. **市场估值指标（截止今日最新数据）**：PE市盈率、PS市销率、PB市净率等估值指标，必须明确要求"截止今日"或"最新"数据
+9. 未来增长预期和战略方向
+10. 风险因素和挑战
+11. 分析师观点和评级
+12. 行业趋势和宏观环境
+
+重要要求：
+- 必须包含一个查询专门获取股票当前价格和市值（作为高优先级查询）
+- 必须包含一个查询专门获取公司基本介绍（成立背景、团队、管理层）
+- 必须包含一个查询专门获取竞争和合作关系（竞争对手、合作伙伴）
+- 必须包含一个查询专门获取供应链关系（供应商、客户关系）
+- 所有估值指标相关的查询必须明确包含"截止今日"、"最新"、"current"、"latest"等时间限定词
+- 查询应该具体、可搜索，使用英文
 
 请生成精确、可搜索的查询。只返回JSON，不要其他内容。"""
 
@@ -121,44 +140,44 @@ class QueryPlannerAgent:
         """
         fallback_queries = [
             {
+                "query": f"{company_or_topic} current stock price market cap market capitalization today latest",
+                "purpose": "股票当前价格和市值",
+                "priority": "high"
+            },
+            {
+                "query": f"{company_or_topic} company background founding history management team executives leadership",
+                "purpose": "公司基本介绍（成立背景、团队）",
+                "priority": "high"
+            },
+            {
                 "query": f"{company_or_topic} latest financial results revenue profit 2024 2025",
                 "purpose": "最新财务数据",
                 "priority": "high"
             },
             {
-                "query": f"{company_or_topic} valuation PE ratio market cap stock price analysis",
-                "purpose": "估值指标",
+                "query": f"{company_or_topic} competitors competitive landscape strategic partnerships alliances",
+                "purpose": "竞争和合作关系",
+                "priority": "high"
+            },
+            {
+                "query": f"{company_or_topic} supply chain suppliers customers key relationships",
+                "purpose": "供应链关系",
+                "priority": "medium"
+            },
+            {
+                "query": f"{company_or_topic} PE ratio PS ratio PB ratio valuation metrics latest current as of today",
+                "purpose": "估值指标（截止今日最新数据）",
                 "priority": "high"
             },
             {
                 "query": f"{company_or_topic} recent news major events announcements",
                 "purpose": "最新新闻",
-                "priority": "high"
-            },
-            {
-                "query": f"{company_or_topic} competitive advantage market position industry",
-                "purpose": "竞争地位",
                 "priority": "medium"
             },
             {
                 "query": f"{company_or_topic} growth forecast future outlook strategy",
                 "purpose": "增长预期",
                 "priority": "medium"
-            },
-            {
-                "query": f"{company_or_topic} analyst ratings price target recommendations",
-                "purpose": "分析师观点",
-                "priority": "medium"
-            },
-            {
-                "query": f"{company_or_topic} risks challenges concerns",
-                "purpose": "风险因素",
-                "priority": "low"
-            },
-            {
-                "query": f"{company_or_topic} industry trends market conditions macro environment",
-                "purpose": "行业趋势",
-                "priority": "low"
             }
         ]
         
